@@ -1,0 +1,59 @@
+{
+  "manifest_version": 2,
+  "name": "Phishing Detection Extension",
+  "version": "1.0",
+  "description": "Detects phishing websites in real-time using AI-based detection.",
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": false
+  },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["content.js"]
+  }],
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "activeTab",
+    "webRequest",
+    "webRequestBlocking",
+    "storage",
+    "https://*/",
+    "http://*/"
+  ],
+  "web_accessible_resources": [
+    "icons/icon16.png",
+    "icons/icon48.png",
+    "icons/icon128.png"
+  ],
+  "content_security_policy": "script-src 'self' https://apis.google.com; object-src 'self'",
+  "optional_permissions": [
+    "tabs",
+    "history"
+  ],
+  "commands": {
+    "_execute_browser_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+F",
+        "mac": "Command+Shift+F"
+      },
+      "description": "Open the Phishing Detection popup"
+    }
+  },
+  "externally_connectable": {
+    "matches": [
+      "*://*.example.com/*"
+    ]
+  }
+}
