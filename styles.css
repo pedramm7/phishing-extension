@@ -1,23 +1,29 @@
 body {
-    font-family: Arial, sans-serif;
-}
-
-#popup {
-    width: 300px;
+    width: 250px;
     text-align: center;
+    font-family: Arial, sans-serif;
+    padding: 10px;
 }
 
-h1 {
-    font-size: 24px;
-    margin-bottom: 20px;
+h2 {
+    color: #333;
 }
 
-#status {
-    font-size: 18px;
-    margin-bottom: 20px;
+#site-status {
+    font-weight: bold;
+    margin: 10px 0;
 }
 
-button {
-    padding: 10px 20px;
-    font-size: 16px;
+.danger-btn {
+    background-color: red;
+    color: white;
+    border: none;
+    padding: 10px;
+    cursor: pointer;
+    margin-top: 10px;
+    border-radius: 5px;
+}
+
+.danger-btn:hover {
+    background-color: darkred;
 }

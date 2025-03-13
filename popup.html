@@ -2,15 +2,20 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Phishing Detection</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phishing Detector</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div id="popup">
-        <h1>Phishing Detection</h1>
-        <p id="status">Scanning...</p>
-        <button id="scanButton">Scan Again</button>
-    </div>
+    <h2>🔍 Phishing Detector</h2>
+    
+    <p id="site-status">Checking site status...</p>
+    
+    <button id="report-phishing" class="danger-btn">🚨 Report Phishing</button>
+    
+    <div id="result"></div>
+    
     <script src="popup.js"></script>
 </body>
 </html>
+
