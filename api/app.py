@@ -6,6 +6,7 @@ import re
 import json
 from urllib.parse import urlparse
 import os
+import requests
 
 app = Flask(__name__)
 CORS(app)
@@ -13,6 +14,23 @@ CORS(app)
 # JSON file to store user-reported phishing sites
 PHISHING_DB_FILE = os.path.join(os.path.dirname(__file__), "phishing_db.json")
 
+OPENPHISH_FEED_URL = "https://openphish.com/feed.txt"
+
+def check_openphish(url):
+    """Check if a URL is flagged as phishing in OpenPhish"""
+    try:
+        response = requests.get(OPENPHISH_FEED_URL)
+        
+        if response.status_code == 200:
+            phishing_urls = response.text.split("\n")  # Get list of phishing URLs
+            
+            if url in phishing_urls:
+                return True  # URL is phishing
+
+    except Exception as e:
+        print(f"Error checking OpenPhish: {e}")
+
+    return False  # Assume safe if there's an error
 
 
 # Load or create the phishing database file
@@ -50,7 +68,11 @@ def is_phishing(url):
         return True
 
     # 5. Check for URL shorteners
-    url_shorteners = ["bit.ly", "tinyurl.com", "goo.gl", "t.co"]
+    url_shorteners = [
+        "bit.ly", "tinyurl.com", "goo.gl", "t.co", "is.gd", "buff.ly", "adf.ly",
+        "ow.ly", "shorte.st", "cutt.ly", "t.ly", "rb.gy", "mcaf.ee", "soo.gd",
+        "rebrand.ly", "bl.ink", "tr.im", "v.gd", "u.to", "linklyhq.com", "clck.ru"
+    ]
     if any(shortener in parsed_url.netloc for shortener in url_shorteners):
         return True
 
@@ -77,6 +99,9 @@ def detect_phishing():
     # Apply rule-based detection
     phishing_by_rules = is_phishing(url)
 
+    # Check with OpenPhish API
+    openphish_result = check_openphish(url)
+    
     # AI-based detection (if model is available)
     phishing_by_ai = False
     if model:
@@ -89,7 +114,7 @@ def detect_phishing():
 
     # Combine all detection methods
     # phishing_detected = phishing_by_report or phishing_by_rules or phishing_by_ai
-    phishing_detected = phishing_by_report or phishing_by_rules
+    phishing_detected = phishing_by_report or phishing_by_rules or openphish_result
 
     return jsonify({'phishing': bool(phishing_detected)})
 
