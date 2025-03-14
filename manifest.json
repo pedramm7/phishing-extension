@@ -1,17 +1,18 @@
 {
-  "manifest_version": 2,
+  "manifest_version": 3,
   "name": "Phishing Detection Extension",
   "version": "1.0",
   "description": "Detects phishing websites in real-time using AI-based detection.",
   "background": {
-    "scripts": ["background.js"],
-    "persistent": false
+    "service_worker": "background.js"
   },
-  "content_scripts": [{
-    "matches": ["<all_urls>"],
-    "js": ["content.js"]
-  }],
-  "browser_action": {
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "action": {
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
@@ -26,24 +27,27 @@
   },
   "permissions": [
     "activeTab",
-    "webRequest",
-    "webRequestBlocking",
-    "storage",
-    "https://*/",
-    "http://*/"
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*/*",
+    "http://*/*"
   ],
   "web_accessible_resources": [
-    "icons/icon16.png",
-    "icons/icon48.png",
-    "icons/icon128.png"
+    {
+      "resources": [
+        "icons/icon16.png",
+        "icons/icon48.png",
+        "icons/icon128.png"
+      ],
+      "matches": ["<all_urls>"]
+    }
   ],
-  "content_security_policy": "script-src 'self' https://apis.google.com; object-src 'self'",
-  "optional_permissions": [
-    "tabs",
-    "history"
-  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
   "commands": {
-    "_execute_browser_action": {
+    "_execute_action": {
       "suggested_key": {
         "default": "Ctrl+Shift+F",
         "mac": "Command+Shift+F"
@@ -52,8 +56,6 @@
     }
   },
   "externally_connectable": {
-    "matches": [
-      "*://*.example.com/*"
-    ]
+    "matches": ["*://*.example.com/*"]
   }
 }

@@ -1,53 +1,72 @@
-// popup.js - Handles UI interactions
-document.addEventListener("DOMContentLoaded", function () {
-    let siteStatus = document.getElementById("site-status");
-    let reportButton = document.getElementById("report-phishing");
+document.addEventListener('DOMContentLoaded', function() {
+    const statusElement = document.getElementById('status');
+    const scanButton = document.getElementById('scanButton');
+    const reportButton = document.getElementById('reportButton');
+    const reportStatus = document.getElementById('reportStatus');
 
-    // Get the active tab URL
-    chrome.tabs.query({ active: true, currentWindow: true }, async function (tabs) {
-        let currentUrl = tabs[0].url;
-        
-        // Check if the site is in the phishing database
-        let isPhishing = await checkPhishing(currentUrl);
-        
-        if (isPhishing) {
-            siteStatus.innerHTML = "🚨 Warning: This site is flagged as phishing!";
-            siteStatus.style.color = "red";
-        } else {
-            siteStatus.innerHTML = "✅ This site appears safe.";
-            siteStatus.style.color = "green";
-        }
-    });
+    scanButton.disabled = true;
+    statusElement.textContent = "Scanning...";
+    statusElement.style.color = "black";
 
-    // Function to check phishing status via backend API
-    async function checkPhishing(url) {
-        try {
-            let response = await fetch("https://your-backend-api.com/check?url=" + encodeURIComponent(url));
-            let data = await response.json();
-            return data.isPhishing; // Returns true if phishing detected
-        } catch (error) {
-            console.error("Error checking site status:", error);
-            return false;
-        }
+    let currentUrl = "";
+
+    function performScan() {
+        chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+            if (tabs.length === 0) return;
+
+            currentUrl = tabs[0].url; // Store URL for reporting
+
+            chrome.tabs.sendMessage(tabs[0].id, { action: "scan" }, function(response) {
+                if (!response) {
+                    statusElement.textContent = "Error: No response from content script.";
+                    statusElement.style.color = "orange";
+                    scanButton.disabled = false;
+                    return;
+                }
+
+                if (response.phishing) {
+                    statusElement.textContent = "⚠️ Warning: Phishing detected!";
+                    statusElement.style.color = "red";
+                } else {
+                    statusElement.textContent = "✅ No phishing detected.";
+                    statusElement.style.color = "green";
+                }
+
+                scanButton.disabled = false;
+            });
+        });
     }
 
-    // Report phishing button functionality
-    reportButton.addEventListener("click", async function () {
-        chrome.tabs.query({ active: true, currentWindow: true }, async function (tabs) {
-            let currentUrl = tabs[0].url;
-            
-            let response = await fetch("https://your-backend-api.com/report", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ url: currentUrl, reason: "User Reported" })
-            });
+    performScan();
 
-            let data = await response.json();
-            if (data.success) {
-                alert("✅ Thank you! This site has been reported for review.");
-            } else {
-                alert("❌ Error reporting site. Try again later.");
-            }
+    scanButton.addEventListener('click', function() {
+        scanButton.disabled = true;
+        statusElement.textContent = "Scanning...";
+        statusElement.style.color = "black";
+        performScan();
+    });
+
+    reportButton.addEventListener('click', function() {
+        if (!currentUrl) {
+            reportStatus.textContent = "❌ No URL found.";
+            reportStatus.style.color = "red";
+            return;
+        }
+
+        fetch('http://127.0.0.1:5000/api/report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: currentUrl })
+        })
+        .then(response => response.json())
+        .then(data => {
+            reportStatus.textContent = "✅ " + data.message;
+            reportStatus.style.color = "green";
+        })
+        .catch(error => {
+            reportStatus.textContent = "❌ Error reporting site.";
+            reportStatus.style.color = "red";
+            console.error("Report Error:", error);
         });
     });
 });

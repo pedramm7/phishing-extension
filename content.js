@@ -1,20 +1,33 @@
-// content.js - Phishing Detection Script
 console.log("Phishing Detector Content Script Loaded");
 
-// Get the current website URL
-let currentUrl = window.location.href;
+// Listen for scan requests from popup.js
+chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+    if (request.action === "scan") {
+        const url = window.location.href;
+        console.log("🔍 Scanning URL:", url);
 
-// Function to check if the URL is in a phishing database
-async function checkPhishing(url) {
-    try {
-        let response = await fetch("https://your-backend-api.com/check?url=" + encodeURIComponent(url));
-        let data = await response.json();
-        return data.isPhishing; // Returns true if phishing detected
-    } catch (error) {
-        console.error("Error checking phishing database:", error);
-        return false; // Assume safe if there's an error
+        fetch('http://127.0.0.1:5000/api/detect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: url })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log("✅ API Response:", data);
+            sendResponse({ phishing: data.phishing });
+
+            if (data.phishing || heuristicCheck(url)) {
+                showWarningBanner();
+            }
+        })
+        .catch(error => {
+            console.error("❌ Fetch Error:", error);
+            sendResponse({ phishing: false });
+        });
+
+        return true; // Allows sendResponse to work asynchronously
     }
-}
+});
 
 // Heuristic-based phishing detection
 function heuristicCheck(url) {
@@ -59,35 +72,7 @@ function showWarningBanner() {
     });
 }
 
-// Allow users to report a suspicious site
-async function reportPhishingSite(url) {
-    try {
-        let response = await fetch("https://your-backend-api.com/report", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: url, reason: "User Reported" })
-        });
-
-        let data = await response.json();
-        if (data.success) {
-            alert("✅ Thank you for reporting! This site will be reviewed.");
-        } else {
-            alert("❌ Error reporting site. Try again later.");
-        }
-    } catch (error) {
-        console.error("Error reporting phishing site:", error);
-    }
+// Run heuristic checks on page load
+if (heuristicCheck(window.location.href)) {
+    showWarningBanner();
 }
-
-// Main function to analyze the website
-async function analyzeWebsite() {
-    let isPhishing = await checkPhishing(currentUrl);
-    
-    if (isPhishing || heuristicCheck(currentUrl)) {
-        showWarningBanner();
-    }
-}
-
-// Run the analysis when the page loads
-analyzeWebsite();
-

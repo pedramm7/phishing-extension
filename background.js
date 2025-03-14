@@ -1,3 +1,4 @@
+// When the extension is installed or updated
 chrome.runtime.onInstalled.addListener(() => {
     console.log("Phishing Detector Extension Installed.");
 });
@@ -35,7 +36,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // Handle reporting phishing sites from popup.js
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "reportSite") {
-        fetch("http://127.0.0.1:5000/report", {
+        fetch("http://127.0.0.1:5000/api/report", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url: request.url })
@@ -52,3 +53,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; // Keeps sendResponse active
     }
 });
+
+// Detect phishing before a site loads
+chrome.webRequest.onBeforeRequest.addListener(
+    function(details) {
+        // Sending a message to content script to check phishing
+        chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
+            if (tabs.length > 0) {
+                chrome.tabs.sendMessage(tabs[0].id, { action: "scan" }, function(response) {
+                    if (response && response.phishing) {
+                        chrome.notifications.create({
+                            type: 'basic',
+                            iconUrl: 'icons/icon48.png',
+                            title: 'Phishing Warning',
+                            message: 'This site has been flagged as a phishing site.'
+                        });
+                    }
+                });
+            }
+        });
+    },
+    { urls: ["<all_urls>"] }
+);
