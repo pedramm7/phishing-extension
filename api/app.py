@@ -13,7 +13,15 @@ CORS(app)
 # JSON file to store user-reported phishing sites
 PHISHING_DB_FILE = os.path.join(os.path.dirname(__file__), "phishing_db.json")
 
+@app.route('/api/store_data', methods=['POST'])
+def store_data():
+    data = request.get_json()
 
+    with open('extracted_data.json', 'a') as f:
+        json.dump(data, f, indent=4)
+        f.write('\n')
+
+    return jsonify({"message": "Data stored successfully!"})
 
 # Load or create the phishing database file
 if not os.path.exists(PHISHING_DB_FILE):
