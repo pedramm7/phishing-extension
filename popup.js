@@ -16,23 +16,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
             currentUrl = tabs[0].url; // Store URL for reporting
 
-            chrome.tabs.sendMessage(tabs[0].id, { action: "scan" }, function(response) {
-                if (!response) {
-                    statusElement.textContent = "Error: No response from content script.";
-                    statusElement.style.color = "orange";
+            // Send a message to content.js to extract data from the website
+            chrome.tabs.sendMessage(tabs[0].id, { action: "extractData" }, function(response) {
+                console.log("Extracted Data:", response); // Log extracted data to verify
+
+                // Now, send the scan request after extracting data
+                chrome.tabs.sendMessage(tabs[0].id, { action: "scan" }, function(response) {
+                    if (!response) {
+                        statusElement.textContent = "Error: No response from content script.";
+                        statusElement.style.color = "orange";
+                        scanButton.disabled = false;
+                        return;
+                    }
+
+                    if (response.phishing) {
+                        statusElement.textContent = "⚠️ Warning: Phishing detected!";
+                        statusElement.style.color = "red";
+                    } else {
+                        statusElement.textContent = "✅ No phishing detected.";
+                        statusElement.style.color = "green";
+                    }
+
                     scanButton.disabled = false;
-                    return;
-                }
-
-                if (response.phishing) {
-                    statusElement.textContent = "⚠️ Warning: Phishing detected!";
-                    statusElement.style.color = "red";
-                } else {
-                    statusElement.textContent = "✅ No phishing detected.";
-                    statusElement.style.color = "green";
-                }
-
-                scanButton.disabled = false;
+                });
             });
         });
     }
@@ -70,4 +76,3 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 });
-

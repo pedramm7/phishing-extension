@@ -3,7 +3,7 @@ chrome.runtime.onInstalled.addListener(() => {
     console.log("Phishing Detector Extension Installed.");
 });
 
-// Function to check if the current site is reported as phishing
+// This function checks if the current site is reported as phishing
 async function checkReportedSite(tabId, url) {
     try {
         let response = await fetch("http://127.0.0.1:5000/get-reports");
@@ -51,6 +51,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
 
         return true; // Keeps sendResponse active
+    }
+});
+
+// This function is to handle scanning and extract data from the website
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status === "complete" && tab.url) {
+        // Send message to content.js to extract data
+        chrome.tabs.sendMessage(tabId, { action: "extractData" }, function(response) {
+            // Log or send extracted data to backend
+            console.log("Extracted Data: ", response);
+
+            // Optionally, send this data to your backend (Flask API)
+            fetch('http://127.0.0.1:5000/api/store_data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(response)
+            }).then(res => res.json())
+              .then(data => console.log("Data sent to backend:", data))
+              .catch(error => console.error("Error sending data to backend:", error));
+        });
     }
 });
 
