@@ -13,6 +13,7 @@ CORS(app)
 
 # JSON file to store user-reported phishing sites
 PHISHING_DB_FILE = os.path.join(os.path.dirname(__file__), "phishing_db.json")
+EXTRACTED_DATA_FILE = os.path.join(os.path.dirname(__file__), "extracted_data.json")
 
 OPENPHISH_FEED_URL = "https://openphish.com/feed.txt"
 
@@ -100,8 +101,9 @@ def is_reported_phishing(url):
 @app.route('/api/detect', methods=['POST'])
 def detect_phishing():
     data = request.get_json()
-    url = data.get('url')
-
+    url = data.get('url','')
+    page_text = data.get('pageText','')
+    
     # Check if URL is in reported database
     phishing_by_report = is_reported_phishing(url)
 
