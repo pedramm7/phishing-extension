@@ -4,33 +4,52 @@
 function getPageTitle() {
     const title = document.title;
     console.log('Page Title: ', title);
-    return title;
+    return title ? title : "No Title Found";
 }
 
 function getMetaDescription() {
     const metaTag = document.querySelector('meta[name="description"]');
     const description = metaTag ? metaTag.content : 'No description available';
     console.log('Meta Description: ', description);
-    return description;
+    return description ? description : "No Description Found";
 }
 
 function getLinks() {
     const links = Array.from(document.querySelectorAll('a')).map(link => link.href);
     console.log('Links: ', links);
-    return links;
+    return links ? links : "No Links Found";
 }
 
 function getForms() {
     const forms = Array.from(document.querySelectorAll('form')).map(form => {
-        return {
-            action: form.action,
-            method: form.method,
-            inputs: Array.from(form.querySelectorAll('input')).map(input => input.name)
-        };
+        try {
+            return {
+                action: form.action,
+                method: form.method,
+                inputs: Array.from(form.querySelectorAll('input')).map(input => input.name)
+            };
+        }
+        catch (e) {
+            return null;
+        }
     });
-    console.log('Forms: ', forms);
-    console.log('Favicon: ', favicon)
-    return forms;
+    if (forms) console.log('Forms: ', forms);
+    else console.log('No Forms Found');
+    // if (favicon) console.log('Favicon: ', favicon);
+    // else console.log('No Favicon Found');
+    return forms != null ? forms : null;
+}
+
+function getPageText() {
+    const text = document.body.innerText;
+    // console.log('Page Text: ', text);
+
+    // Since the text in the website is often too large, code below outputs only the
+    // first few characters of the text just to demonstrate the working functionality
+
+    if(text.length > 10) console.log('Page Text: ', text.substring(0,10), '...');
+    else console.log('Page Text: ', text);
+    return text ? text : "No Text Found";
 }
 
 function getImages() {
@@ -39,7 +58,7 @@ function getImages() {
         document.querySelector("link[rel='icon']").href : 'No favicon';
     console.log('Images:', images);
     console.log('Favicon:', favicon);
-    return { images, favicon };
+    return { images, favicon } ? { images, favicon } : null;
 }
 
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
@@ -49,6 +68,7 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         const links = getLinks();
         const forms = getForms();
         const { images, favicon } = getImages();
+        const pageText = getPageText();
 
         sendResponse({
             pageTitle,
@@ -56,7 +76,8 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
             links,
             forms,
             images,
-            favicon
+            favicon,
+            pageText
         });
     }
 
@@ -72,7 +93,7 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         .then(response => response.json())
         .then(data => {
             console.log("✅ API Response:", data);
-            sendResponse({ phishing: data.phishing });
+               sendResponse({ phishing: data.phishing });
 
             if (data.phishing || heuristicCheck(url)) {
                 showWarningBanner();
