@@ -96,7 +96,10 @@ def is_phishing(url):
 def is_reported_phishing(url):
     with open(PHISHING_DB_FILE, "r") as f:
         data = json.load(f)
-    return url in data["reported_sites"]
+    try:
+        return url in data["reported_sites"]
+    except:
+        return False
 
 @app.route('/api/detect', methods=['POST'])
 def detect_phishing():
@@ -138,10 +141,20 @@ def report_phishing():
     if not url:
         return jsonify({'error': 'No URL provided'}), 400
 
-    # Load existing reports
-    with open(PHISHING_DB_FILE, "r") as f:
-        db = json.load(f)
+    db = {}
+    if os.path.exists(PHISHING_DB_FILE):
+        try:
+            with open(PHISHING_DB_FILE, "r") as f:
+                content = f.read().strip()
+                db = json.loads(content) if content else {}
+        except Exception as e:
+            print(f"Error reading phishing DB: {e}")
+            db = {}
 
+    # Ensure the key exists
+    if "reported_sites" not in db:
+        db["reported_sites"] = []
+    
     # Add the reported URL if it's not already in the list
     if url not in db["reported_sites"]:
         db["reported_sites"].append(url)
