@@ -20,7 +20,10 @@ function throttleScan(details) {
 // When the extension is installed or updated
 chrome.runtime.onInstalled.addListener(() => {
     console.log("Phishing Detector Extension Installed.");
+    refreshBlockingRules();
 });
+
+refreshBlockingRules();
 
 // This function checks if the current site is reported as phishing
 async function checkReportedSite(tabId, url) {
@@ -93,7 +96,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 const list = result.blocked_sites;
                 if (!list.includes(urlToReport)) {
                   list.push(urlToReport);
-                  chrome.storage.local.set({ blocked_sites: list });
+                  chrome.storage.local.set({ blocked_sites: list }, ()=> {
+                    refreshBlockingRules();
+                  });
                 }
               });
 
@@ -149,3 +154,31 @@ chrome.webRequest.onBeforeRequest.addListener(
     },
     { urls: ["<all_urls>"] }
 );
+
+// Re-build DNR rules from chrome.storage.local.blocked_sites
+async function refreshBlockingRules() {
+    const { blocked_sites = [] } = await new Promise(r =>
+      chrome.storage.local.get({ blocked_sites: [] }, r)
+    );
+  
+    // Map each URL to a declarativeNetRequest rule
+    const newRules = blocked_sites.map((site, i) => ({
+      id:       1000 + i,            // unique rule IDs
+      priority: 1,
+      action:   { type: 'block' },
+      condition: {
+        urlFilter: site,             // exact match; you can expand to patterns
+        resourceTypes: ['main_frame'] 
+      }
+    }));
+  
+    // Fetch existing dynamic rules so we can remove them all first
+    const existing = await chrome.declarativeNetRequest.getDynamicRules();
+    const removeIds = existing.map(r => r.id);
+  
+    // Atomically remove old rules and add the new set
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: removeIds,
+      addRules: newRules
+    });
+}

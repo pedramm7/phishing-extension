@@ -128,8 +128,23 @@ def detect_phishing():
 
     # Combine all detection methods
     # phishing_detected = phishing_by_report or phishing_by_rules or phishing_by_ai
-    phishing_detected = phishing_by_report or phishing_by_rules or openphish_result
+    # phishing_detected = phishing_by_report or phishing_by_rules or openphish_result
 
+    # return jsonify({'phishing': bool(phishing_detected)})
+    phishing_detected = (
+        phishing_by_report
+        or phishing_by_rules
+        or openphish_result
+        # or phishing_by_ai
+    )
+
+    # Return both the overall flag and the AI-specific flag
+    # For now for the AI part we just return False since algorithm is not implemented
+    return jsonify({
+        'phishing': bool(phishing_detected),
+        # 'phishing_by_ai': bool(phishing_by_ai)
+        'phishing_by_ai': bool(False)
+    })
     return jsonify({'phishing': bool(phishing_detected)})
 
 @app.route('/api/report', methods=['POST'])

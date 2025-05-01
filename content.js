@@ -81,32 +81,78 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         });
     }
 
-    if (request.action === "scan") {
-        const url = window.location.href;
-        console.log("🔍 Scanning URL:", url);
+    // if (request.action === "scan") {
+    //     const url = window.location.href;
+    //     console.log("🔍 Scanning URL:", url);
 
+    //     fetch('http://127.0.0.1:5000/api/detect', {
+    //         method: 'POST',
+    //         headers: { 'Content-Type': 'application/json' },
+    //         body: JSON.stringify({ url: url })
+    //     })
+    //     .then(response => response.json())
+    //     .then(data => {
+    //         console.log("✅ API Response:", data);
+    //            sendResponse({ phishing: data.phishing });
+
+    //         if (data.phishing || heuristicCheck(url)) {
+    //             // showWarningBanner();
+    //             showBlockPage();
+    //         }
+    //     })
+    //     .catch(error => {
+    //         console.error("❌ Fetch Error:", error);
+    //         sendResponse({ phishing: false });
+    //     });
+
+    //     return true; // Allows sendResponse to work asynchronously
+    // }
+
+    if (request.action === "scan") {
+        const url             = window.location.href;
+        const pageTitle       = getPageTitle();
+        const metaDescription = getMetaDescription();
+        const links           = getLinks();
+        const forms           = getForms();
+        const { images, favicon } = getImages();
+        const pageText        = getPageText();
+    
+        console.log("🔍 Scanning with AI model:", url);
         fetch('http://127.0.0.1:5000/api/detect', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: url })
+            body: JSON.stringify({
+                url,
+                pageTitle,
+                metaDescription,
+                links,
+                forms,
+                images,
+                favicon,
+                pageText
+            })
         })
-        .then(response => response.json())
+        .then(res => res.json())
         .then(data => {
             console.log("✅ API Response:", data);
-               sendResponse({ phishing: data.phishing });
-
-            if (data.phishing || heuristicCheck(url)) {
-                // showWarningBanner();
+            // return both flags
+            sendResponse({
+                phishing: data.phishing,
+                phishing_by_ai: data.phishing_by_ai
+            });
+    
+            if (data.phishing) {
                 showBlockPage();
             }
         })
-        .catch(error => {
-            console.error("❌ Fetch Error:", error);
-            sendResponse({ phishing: false });
+        .catch(err => {
+            console.error("❌ Fetch Error:", err);
+            sendResponse({ phishing: false, phishing_by_ai: false });
         });
-
-        return true; // Allows sendResponse to work asynchronously
+    
+        return true; // keep sendResponse alive for the async fetch
     }
+
 });
 
 // Heuristic-based phishing detection
@@ -126,31 +172,31 @@ function heuristicCheck(url) {
 }
 
 // Display warning banner on suspicious websites
-function showWarningBanner() {
-    let banner = document.createElement("div");
-    banner.innerHTML = `
-        🚨 WARNING: This site may be a phishing attempt! 🚨 <br>
-        <button id="leave-site" style="margin-right:10px;">Leave Site</button>
-        <button id="report-site">Report as Safe</button>
-    `;
-    banner.style.backgroundColor = "red";
-    banner.style.color = "white";
-    banner.style.position = "fixed";
-    banner.style.top = "0";
-    banner.style.width = "100%";
-    banner.style.padding = "15px";
-    banner.style.textAlign = "center";
-    banner.style.zIndex = "9999";
-    document.body.prepend(banner);
+// function showWarningBanner() {
+//     let banner = document.createElement("div");
+//     banner.innerHTML = `
+//         🚨 WARNING: This site may be a phishing attempt! 🚨 <br>
+//         <button id="leave-site" style="margin-right:10px;">Leave Site</button>
+//         <button id="report-site">Report as Safe</button>
+//     `;
+//     banner.style.backgroundColor = "red";
+//     banner.style.color = "white";
+//     banner.style.position = "fixed";
+//     banner.style.top = "0";
+//     banner.style.width = "100%";
+//     banner.style.padding = "15px";
+//     banner.style.textAlign = "center";
+//     banner.style.zIndex = "9999";
+//     document.body.prepend(banner);
 
-    document.getElementById("leave-site").addEventListener("click", () => {
-        window.location.href = "https://google.com";
-    });
+//     document.getElementById("leave-site").addEventListener("click", () => {
+//         window.location.href = "https://google.com";
+//     });
 
-    document.getElementById("report-site").addEventListener("click", () => {
-        alert("✅ Site reported. We will review it.");
-    });
-}
+//     document.getElementById("report-site").addEventListener("click", () => {
+//         alert("✅ Site reported. We will review it.");
+//     });
+// }
 
 // Redirect to our full-page block warning
 function showBlockPage() {
