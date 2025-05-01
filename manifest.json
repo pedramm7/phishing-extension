@@ -8,6 +8,7 @@
   },
   "content_scripts": [
     {
+      "matches": ["https://*/*"],
       "matches": ["<all_urls>"],
       "js": ["content.js"]
     }
@@ -30,6 +31,7 @@
     "storage"
   ],
   "host_permissions": [
+    "http://127.0.0.1:5000/*",
     "https://*/*",
     "http://*/*"
   ],
@@ -38,7 +40,9 @@
       "resources": [
         "icons/icon16.png",
         "icons/icon48.png",
-        "icons/icon128.png"
+        "icons/icon128.png",
+        "block.html",
+        "block.js"
       ],
       "matches": ["<all_urls>"]
     }

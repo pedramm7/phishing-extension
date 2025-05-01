@@ -96,7 +96,8 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
                sendResponse({ phishing: data.phishing });
 
             if (data.phishing || heuristicCheck(url)) {
-                showWarningBanner();
+                // showWarningBanner();
+                showBlockPage();
             }
         })
         .catch(error => {
@@ -151,7 +152,15 @@ function showWarningBanner() {
     });
 }
 
+// Redirect to our full-page block warning
+function showBlockPage() {
+  const blockPage = chrome.runtime.getURL('block.html')
+    + '?url=' + encodeURIComponent(window.location.href);
+  window.location.replace(blockPage);
+}
+
 // Run heuristic checks on page load
 if (heuristicCheck(window.location.href)) {
-    showWarningBanner();
+    // showWarningBanner();
+    showBlockPage();
 }

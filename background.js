@@ -1,3 +1,22 @@
+const lastScan = {};
+const SCAN_INTERVAL = 1000;
+
+function throttleScan(details) {
+    const { tabId } = details;
+    const now = Date.now();
+  
+    // Skip if we scanned this tab < SCAN_INTERVAL ago
+    if (lastScan[tabId] && (now - lastScan[tabId] < SCAN_INTERVAL)) {
+      return;
+    }
+    lastScan[tabId] = now;
+  
+    // Fire the content-script scan exactly once per interval
+    chrome.tabs.sendMessage(tabId, { action: "scan" }, response => {
+      // optional: update icon/banner if needed
+    });
+}
+
 // When the extension is installed or updated
 chrome.runtime.onInstalled.addListener(() => {
     console.log("Phishing Detector Extension Installed.");
@@ -5,25 +24,50 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // This function checks if the current site is reported as phishing
 async function checkReportedSite(tabId, url) {
+    // 1) Check local cache first
+    const localList = await new Promise(resolve =>
+        chrome.storage.local.get({ blocked_sites: [] }, res => resolve(res.blocked_sites))
+    );
+    if (localList.includes(url)) {
+        markAsPhishing(tabId);
+        return;
+    }
+
     try {
-        let response = await fetch("http://127.0.0.1:5000/get-reports");
-        let data = await response.json();
+        const response = await fetch("http://127.0.0.1:5000/get-reports");
+        const data = await response.json();
 
         if (data.reported_sites.includes(url)) {
-            chrome.notifications.create({
-                type: "basic",
-                iconUrl: "icons/warning.png",
-                title: "⚠️ Phishing Alert!",
-                message: "This site has been reported as phishing. Proceed with caution."
+            chrome.storage.local.get({ blocked_sites: [] }, result => {
+                const list = result.blocked_sites;
+                if (!list.includes(url)) {
+                  list.push(url);
+                  chrome.storage.local.set({ blocked_sites: list });
+                }
             });
 
-            chrome.action.setIcon({ path: "icons/warning.png", tabId: tabId });
+            markAsPhishing(tabId);
         } else {
-            chrome.action.setIcon({ path: "icons/safe.png", tabId: tabId });
+            markAsSafe(tabId);
         }
     } catch (error) {
         console.error("Error checking reported sites:", error);
+        markAsSafe(tabId);
     }
+}
+
+function markAsPhishing(tabId) {
+    chrome.notifications.create({
+      type: "basic",
+      iconUrl: "icons/warning.png",
+      title: "⚠️ Phishing Alert!",
+      message: "This site has been reported as phishing. Proceed with caution."
+    });
+    chrome.action.setIcon({ path: "icons/warning.png", tabId });
+}
+  
+function markAsSafe(tabId) {
+    chrome.action.setIcon({ path: "icons/safe.png", tabId });
 }
 
 // Listen for tab changes and check if it's a reported site
@@ -36,13 +80,23 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // Handle reporting phishing sites from popup.js
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "reportSite") {
+        const urlToReport = request.url;
+
         fetch("http://127.0.0.1:5000/api/report", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: request.url })
+            body: JSON.stringify({ url: urlToReport })
         })
         .then(response => response.json())
         .then(data => {
+            chrome.storage.local.get({ blocked_sites: [] }, result => {
+                const list = result.blocked_sites;
+                if (!list.includes(urlToReport)) {
+                  list.push(urlToReport);
+                  chrome.storage.local.set({ blocked_sites: list });
+                }
+              });
+
             sendResponse({ success: data.success, message: data.message });
         })
         .catch(error => {
