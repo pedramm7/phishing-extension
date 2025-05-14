@@ -1,113 +1,53 @@
+// content.js
 
-// Here are some data that can be extracted form the website
-// This data might be used for the AI model training
+// Data extraction helpers
 function getPageTitle() {
     const title = document.title;
-    console.log('Page Title: ', title);
     return title ? title : "No Title Found";
 }
-
+  
 function getMetaDescription() {
     const metaTag = document.querySelector('meta[name="description"]');
     const description = metaTag ? metaTag.content : 'No description available';
-    console.log('Meta Description: ', description);
     return description ? description : "No Description Found";
 }
-
+  
 function getLinks() {
-    const links = Array.from(document.querySelectorAll('a')).map(link => link.href);
-    console.log('Links: ', links);
-    return links ? links : "No Links Found";
+    return Array.from(document.querySelectorAll('a')).map(a => a.href);
 }
-
+  
 function getForms() {
-    const forms = Array.from(document.querySelectorAll('form')).map(form => {
-        try {
-            return {
-                action: form.action,
-                method: form.method,
-                inputs: Array.from(form.querySelectorAll('input')).map(input => input.name)
-            };
-        }
-        catch (e) {
-            return null;
-        }
-    });
-    if (forms) console.log('Forms: ', forms);
-    else console.log('No Forms Found');
-    // if (favicon) console.log('Favicon: ', favicon);
-    // else console.log('No Favicon Found');
-    return forms != null ? forms : null;
+    return Array.from(document.querySelectorAll('form')).map(form => ({
+        action: form.action,
+        method: form.method,
+        inputs: Array.from(form.querySelectorAll('input')).map(i => i.name)
+    }));
 }
-
+  
 function getPageText() {
-    const text = document.body.innerText;
-    // console.log('Page Text: ', text);
-
-    // Since the text in the website is often too large, code below outputs only the
-    // first few characters of the text just to demonstrate the working functionality
-
-    if(text.length > 10) console.log('Page Text: ', text.substring(0,10), '...');
-    else console.log('Page Text: ', text);
-    return text ? text : "No Text Found";
+    return document.body.innerText || "No Text Found";
 }
-
+  
 function getImages() {
-    const images = Array.from(document.querySelectorAll('img')).map(img => img.src);
-    const favicon = document.querySelector("link[rel='icon']") ? 
-        document.querySelector("link[rel='icon']").href : 'No favicon';
-    console.log('Images:', images);
-    console.log('Favicon:', favicon);
-    return { images, favicon } ? { images, favicon } : null;
+    const images = Array.from(document.querySelectorAll('img')).map(i => i.src);
+    const favicon = document.querySelector("link[rel='icon']")?.href || 'No favicon';
+    return { images, favicon };
 }
-
-chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+  
+// Listen for extension messages
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === "extractData") {
-        const pageTitle = getPageTitle();
-        const metaDescription = getMetaDescription();
-        const links = getLinks();
-        const forms = getForms();
-        const { images, favicon } = getImages();
-        const pageText = getPageText();
-
         sendResponse({
-            pageTitle,
-            metaDescription,
-            links,
-            forms,
-            images,
-            favicon,
-            pageText
+            pageTitle: getPageTitle(),
+            metaDescription: getMetaDescription(),
+            links: getLinks(),
+            forms: getForms(),
+            images: getImages().images,
+            favicon: getImages().favicon,
+            pageText: getPageText()
         });
     }
-
-    // if (request.action === "scan") {
-    //     const url = window.location.href;
-    //     console.log("🔍 Scanning URL:", url);
-
-    //     fetch('http://127.0.0.1:5000/api/detect', {
-    //         method: 'POST',
-    //         headers: { 'Content-Type': 'application/json' },
-    //         body: JSON.stringify({ url: url })
-    //     })
-    //     .then(response => response.json())
-    //     .then(data => {
-    //         console.log("✅ API Response:", data);
-    //            sendResponse({ phishing: data.phishing });
-
-    //         if (data.phishing || heuristicCheck(url)) {
-    //             // showWarningBanner();
-    //             showBlockPage();
-    //         }
-    //     })
-    //     .catch(error => {
-    //         console.error("❌ Fetch Error:", error);
-    //         sendResponse({ phishing: false });
-    //     });
-
-    //     return true; // Allows sendResponse to work asynchronously
-    // }
-
+  
     if (request.action === "scan") {
         const url             = window.location.href;
         const pageTitle       = getPageTitle();
@@ -116,97 +56,59 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
         const forms           = getForms();
         const { images, favicon } = getImages();
         const pageText        = getPageText();
-    
-        console.log("🔍 Scanning with AI model:", url);
+  
         fetch('http://127.0.0.1:5000/api/detect', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                url,
-                pageTitle,
-                metaDescription,
-                links,
-                forms,
-                images,
-                favicon,
-                pageText
-            })
+            body: JSON.stringify({ url, pageTitle, metaDescription, links, forms, images, favicon, pageText })
         })
         .then(res => res.json())
         .then(data => {
-            console.log("✅ API Response:", data);
-            // return both flags
-            sendResponse({
-                phishing: data.phishing,
-                phishing_by_ai: data.phishing_by_ai
-            });
-    
-            if (data.phishing) {
-                showBlockPage();
-            }
+            sendResponse({ phishing: data.phishing, phishing_by_ai: data.phishing_by_ai });
+            if (data.phishing) showBlockPage(data.reason);
         })
         .catch(err => {
-            console.error("❌ Fetch Error:", err);
+            console.error("Fetch Error:", err);
             sendResponse({ phishing: false, phishing_by_ai: false });
         });
-    
-        return true; // keep sendResponse alive for the async fetch
+  
+        return true;  // keep sendResponse alive
     }
-
 });
-
-// Heuristic-based phishing detection
-function heuristicCheck(url) {
-    let phishingPatterns = [
-        /paypal.*\.com/i,  // Example: "paypal-secure.com"
-        /login.*\.net/i,   // Example: "login-facebook.net"
-        /secure.*\.xyz/i,  // Example: "secure-banking.xyz"
-    ];
-
-    if (!url.startsWith("https://")) {
-        console.warn("🚨 Warning: Site does not use HTTPS! Potential phishing risk.");
-        return true; // Non-HTTPS sites are risky
-    }
-
-    return phishingPatterns.some(pattern => pattern.test(url));
-}
-
-// Display warning banner on suspicious websites
-// function showWarningBanner() {
-//     let banner = document.createElement("div");
-//     banner.innerHTML = `
-//         🚨 WARNING: This site may be a phishing attempt! 🚨 <br>
-//         <button id="leave-site" style="margin-right:10px;">Leave Site</button>
-//         <button id="report-site">Report as Safe</button>
-//     `;
-//     banner.style.backgroundColor = "red";
-//     banner.style.color = "white";
-//     banner.style.position = "fixed";
-//     banner.style.top = "0";
-//     banner.style.width = "100%";
-//     banner.style.padding = "15px";
-//     banner.style.textAlign = "center";
-//     banner.style.zIndex = "9999";
-//     document.body.prepend(banner);
-
-//     document.getElementById("leave-site").addEventListener("click", () => {
-//         window.location.href = "https://google.com";
-//     });
-
-//     document.getElementById("report-site").addEventListener("click", () => {
-//         alert("✅ Site reported. We will review it.");
-//     });
+  
+  // Heuristic-based phishing detection
+// function heuristicCheck(url) {
+//     const patterns = [
+//         /paypal.*\.com/i,
+//         /login.*\.net/i,
+//         /secure.*\.xyz/i];
+//     if (!url.startsWith("https://")) return true;
+//     return patterns.some(p => p.test(url));
 // }
 
-// Redirect to our full-page block warning
-function showBlockPage() {
-  const blockPage = chrome.runtime.getURL('block.html')
-    + '?url=' + encodeURIComponent(window.location.href);
-  window.location.replace(blockPage);
+function showBlockPage(reason) {
+    const blockUrl = chrome.runtime.getURL('block.html')
+      + '?url='    + encodeURIComponent(window.location.href)
+      + '&reason=' + encodeURIComponent(reason || '');
+    window.location.replace(blockUrl);
 }
 
-// Run heuristic checks on page load
-if (heuristicCheck(window.location.href)) {
-    // showWarningBanner();
-    showBlockPage();
-}
+// Redirect to full-page block warning
+// function showBlockPage() {
+//     const blockPage = chrome.runtime.getURL('block.html') + '?url=' + encodeURIComponent(window.location.href);
+//     window.location.replace(blockPage);
+// }
+  
+// On load: check bypass_list first, then heuristics
+chrome.storage.local.get({ bypass_list: [] }, ({ bypass_list }) => {
+    const current = window.location.href;
+    if (bypass_list.includes(current)) {
+      // one-time bypass: remove and continue
+      chrome.storage.local.set({ bypass_list: bypass_list.filter(u => u !== current) });
+      return;
+    }
+    // if (heuristicCheck(current)) {
+    //   showBlockPage("Heuristic rules triggered");
+    // }
+});
+  

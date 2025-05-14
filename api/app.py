@@ -7,6 +7,8 @@ import json
 from urllib.parse import urlparse
 import os
 import requests
+import whois
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
@@ -58,39 +60,85 @@ except Exception as e:
 # Rule-based phishing detection
 def is_phishing(url):
     suspicious_keywords = ['secure', 'account', 'update', 'bank', 'login', 'verify', 'payment']
-    parsed_url = urlparse(url)
-
-    # 1. Check if domain uses an IP address
-    if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", parsed_url.netloc):
-        return True
-
-    # 2. Check for HTTP (not HTTPS)
-    if parsed_url.scheme != "https":
-        return True
-
-    # 3. Check for suspicious keywords in the URL
-    for keyword in suspicious_keywords:
-        if keyword in parsed_url.netloc or keyword in parsed_url.path:
-            return True
-
-    # 4. Check for too many dots (subdomains)
-    if parsed_url.netloc.count('.') > 3:
-        return True
-
-    # 5. Check for URL shorteners
-    url_shorteners = [
+    url_shorteners = {
         "bit.ly", "tinyurl.com", "goo.gl", "t.co", "is.gd", "buff.ly", "adf.ly",
         "ow.ly", "shorte.st", "cutt.ly", "t.ly", "rb.gy", "mcaf.ee", "soo.gd",
         "rebrand.ly", "bl.ink", "tr.im", "v.gd", "u.to", "linklyhq.com", "clck.ru"
-    ]
-    if any(shortener in parsed_url.netloc for shortener in url_shorteners):
-        return True
+    }
+    risky_tlds = {'.tk', '.ml', '.ga', '.cf', '.gq', '.zip', '.work'}
+    
+    parsed_url = urlparse(url)
+    netloc = parsed_url.netloc.lower()
+    path   = parsed_url.path.lower()
+    qs     = parsed_url.query.lower()
 
-    # 6. Check if URL is too long
+    # 1. IP-address host
+    if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", netloc):
+        return True, "Uses raw IP address"
+
+    # 2. Non-HTTPS
+    if parsed_url.scheme != "https":
+        return True, "Not using HTTPS"
+
+    # 3. Suspicious keywords
+    for kw in suspicious_keywords:
+        if kw in netloc or kw in path:
+            return True, f"Suspicious keyword: “{kw}”"
+
+    # 4. Too many subdomains
+    if netloc.count('.') > 3:
+        return True, "Too many subdomains"
+
+    # 5. Embedded credentials (“@” trick)
+    if '@' in netloc:
+        return True, "Embedded credentials in URL"
+
+    # 6. URL shorteners
+    if any(short in netloc for short in url_shorteners):
+        return True, "Uses a known URL shortener"
+
+    # 7. Risky TLDs
+    for tld in risky_tlds:
+        # if any(netloc.endswith(tld) for tld in risky_tlds):
+        if netloc.endswith(tld):
+            return True, f"Risky TLD “{tld}”"
+
+
+    # 8. Excessive length
     if len(url) > 75:
-        return True
+        return True, "URL is too long"
+
+    # 9. Punycode / IDN homograph (any label starting with xn--)
+    for label in netloc.split('.'):
+        if label.startswith('xn--'):
+            return True, "Internationalized (Punycode) domain"
+
+    # 10. Double file extensions (e.g. invoice.pdf.exe)
+    if re.search(r'\.\w+\.\w+$', path):
+        return True, "Double file-extension in path"
+
+    # 11. High-risk query parameters
+    for param in ['password=', 'token=', 'session=']:
+        if param in qs:
+            return True, f"High-risk param “{param}”"
+
+    # 12. Very young domain (WHOIS < 30 days)
+    try:
+        info = whois.whois(netloc)
+        created = info.creation_date
+        # creation_date can be a list or a single datetime
+        if isinstance(created, list):
+            created = created[0]
+        if isinstance(created, datetime):
+            age_days = (datetime.utcnow() - created).days
+            if age_days < 30:
+                return True, "Very newly registered domain"
+    except Exception:
+        # silent fail: if WHOIS errors or no date available, just continue
+        pass
 
     return False
+
 
 # Check if a URL is in the reported phishing list
 def is_reported_phishing(url):
@@ -104,48 +152,56 @@ def is_reported_phishing(url):
 @app.route('/api/detect', methods=['POST'])
 def detect_phishing():
     data = request.get_json()
-    url = data.get('url','')
-    page_text = data.get('pageText','')
-    
-    # Check if URL is in reported database
-    phishing_by_report = is_reported_phishing(url)
+    url       = data.get('url', '')
+    page_text = data.get('pageText', '')
 
-    # Apply rule-based detection
-    phishing_by_rules = is_phishing(url)
+    # 1) User-reported DB
+    if is_reported_phishing(url):
+        return jsonify({
+            'phishing': True,
+            'reason':   'Previously reported by a user',
+            'phishing_by_ai': False
+        })
 
-    # Check with OpenPhish API
+    # 2) Rule-based detection (now returns a tuple)
+    phishing_by_rules, rule_reason = is_phishing(url)
+
+    # 3) OpenPhish lookup
     openphish_result = check_openphish(url)
-    
-    # AI-based detection (if model is available)
+
+    # 4) AI model (stubbed/uncomment if you wire up features)
     phishing_by_ai = False
     if model:
-        url_feature = np.array([[len(url)]])  # Basic feature extraction
         try:
-            phishing_by_ai = model.predict([url_feature])[0]
+            features = np.array([[len(url)]])
+            phishing_by_ai = bool(model.predict(features)[0])
         except Exception as e:
             print(f"⚠️ AI model error: {e}")
             phishing_by_ai = False
 
-    # Combine all detection methods
-    # phishing_detected = phishing_by_report or phishing_by_rules or phishing_by_ai
-    # phishing_detected = phishing_by_report or phishing_by_rules or openphish_result
-
-    # return jsonify({'phishing': bool(phishing_detected)})
+    # Combine all detectors
     phishing_detected = (
-        phishing_by_report
-        or phishing_by_rules
+        phishing_by_rules
         or openphish_result
-        # or phishing_by_ai
+        or phishing_by_ai
     )
 
-    # Return both the overall flag and the AI-specific flag
-    # For now for the AI part we just return False since algorithm is not implemented
+    # Choose a top-level reason
+    if phishing_by_rules:
+        reason = rule_reason
+    elif openphish_result:
+        reason = "Listed in OpenPhish feed"
+    elif phishing_by_ai:
+        reason = "Flagged by AI model"
+    else:
+        reason = ""
+
+    # Return overall flag, the reason, and the AI flag
     return jsonify({
-        'phishing': bool(phishing_detected),
-        # 'phishing_by_ai': bool(phishing_by_ai)
-        'phishing_by_ai': bool(False)
+        'phishing': phishing_detected,
+        'reason': reason,
+        'phishing_by_ai': phishing_by_ai
     })
-    return jsonify({'phishing': bool(phishing_detected)})
 
 @app.route('/api/report', methods=['POST'])
 def report_phishing():

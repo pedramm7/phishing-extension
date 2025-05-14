@@ -18,6 +18,10 @@
       padding: 2rem;
     }
     h1 { font-size: 2.5rem; margin-bottom: 1rem; }
+    #reason {
+      font-weight: bold;
+      margin: 1rem 0;
+    }
     button { 
       margin: .5rem; 
       padding: .75rem 1.5rem; 
@@ -33,6 +37,8 @@
 <body>
   <h1>🚫 Suspicious Site Blocked</h1>
   <p>This page (<span id="url"></span>) has been flagged as a phishing attempt.</p>
+  <!-- Place for the rule-based reason -->
+  <p id="reason"></p>
   <div>
     <button id="back">Leave Website</button>
     <button id="proceed">Proceed Anyway</button>
