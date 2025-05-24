@@ -1,7 +1,5 @@
 from flask import Flask, request, jsonify
-import pickle
 from flask_cors import CORS
-import numpy as np
 import re
 import json
 from urllib.parse import urlparse
@@ -9,6 +7,9 @@ import os
 import requests
 import whois
 from datetime import datetime
+from gradio_client import Client
+from bs4 import BeautifulSoup
+
 
 app = Flask(__name__)
 CORS(app)
@@ -22,7 +23,7 @@ OPENPHISH_FEED_URL = "https://openphish.com/feed.txt"
 def check_openphish(url):
     """Check if a URL is flagged as phishing in OpenPhish"""
     try:
-        response = requests.get(OPENPHISH_FEED_URL)
+        response = requests.get(OPENPHISH_FEED_URL, timeout=10)
         
         if response.status_code == 200:
             phishing_urls = response.text.split("\n")  # Get list of phishing URLs
@@ -34,6 +35,19 @@ def check_openphish(url):
         print(f"Error checking OpenPhish: {e}")
 
     return False  # Assume safe if there's an error
+
+def get_page_content(url):
+    """Safely fetch and parse page content"""
+    try:
+        response = requests.get(url, timeout=10, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        return soup.get_text()
+    except Exception as e:
+        print(f"Error fetching page content: {e}")
+        return ""
 
 @app.route('/api/store_data', methods=['POST'])
 def store_data():
@@ -52,13 +66,14 @@ if not os.path.exists(PHISHING_DB_FILE):
 
 # Load the trained model (if exists)
 try:
-    model = pickle.load(open('model/phishing_model.pkl', 'rb'))
+    client = Client("nijatmammadov/pda")
 except Exception as e:
     print(f"Error loading model: {e}")
-    model = None
+    client = None
 
-# Rule-based phishing detection
-def is_phishing(url):
+
+def is_phishing_rules(url):
+    """Rule-based phishing detection only"""
     suspicious_keywords = ['secure', 'account', 'update', 'bank', 'login', 'verify', 'payment']
     url_shorteners = {
         "bit.ly", "tinyurl.com", "goo.gl", "t.co", "is.gd", "buff.ly", "adf.ly",
@@ -83,13 +98,13 @@ def is_phishing(url):
     # 3. Suspicious keywords
     for kw in suspicious_keywords:
         if kw in netloc or kw in path:
-            return True, f"Suspicious keyword: “{kw}”"
+            return True, f"Suspicious keyword: \"{kw}\""
 
     # 4. Too many subdomains
     if netloc.count('.') > 3:
         return True, "Too many subdomains"
 
-    # 5. Embedded credentials (“@” trick)
+    # 5. Embedded credentials ("@" trick)
     if '@' in netloc:
         return True, "Embedded credentials in URL"
 
@@ -99,10 +114,8 @@ def is_phishing(url):
 
     # 7. Risky TLDs
     for tld in risky_tlds:
-        # if any(netloc.endswith(tld) for tld in risky_tlds):
         if netloc.endswith(tld):
-            return True, f"Risky TLD “{tld}”"
-
+            return True, f"Risky TLD \"{tld}\""
 
     # 8. Excessive length
     if len(url) > 75:
@@ -120,7 +133,7 @@ def is_phishing(url):
     # 11. High-risk query parameters
     for param in ['password=', 'token=', 'session=']:
         if param in qs:
-            return True, f"High-risk param “{param}”"
+            return True, f"High-risk param \"{param}\""
 
     # 12. Very young domain (WHOIS < 30 days)
     try:
@@ -137,47 +150,63 @@ def is_phishing(url):
         # silent fail: if WHOIS errors or no date available, just continue
         pass
 
-    return False
+    return False, ""
 
+def check_ai_model(content):
+    """Check content using AI model"""
+    if not client or not content:
+        return False, ""
+    
+    try:
+        result = client.predict(content, api_name="/predict")
+        if result['label'] == "Phishing":
+            return True, "Flagged by AI model"
+    except Exception as e:
+        print(f"⚠️ AI model error: {e}")
+    
+    return False, ""
 
 # Check if a URL is in the reported phishing list
 def is_reported_phishing(url):
-    with open(PHISHING_DB_FILE, "r") as f:
-        data = json.load(f)
     try:
-        return url in data["reported_sites"]
-    except:
+        with open(PHISHING_DB_FILE, "r") as f:
+            data = json.load(f)
+        return url in data.get("reported_sites", [])
+    except Exception as e:
+        print(f"Error reading phishing DB: {e}")
         return False
 
 @app.route('/api/detect', methods=['POST'])
 def detect_phishing():
     data = request.get_json()
-    url       = data.get('url', '')
+    url = data.get('url', '')
     page_text = data.get('pageText', '')
+
+    if not url:
+        return jsonify({'error': 'No URL provided'}), 400
 
     # 1) User-reported DB
     if is_reported_phishing(url):
         return jsonify({
             'phishing': True,
-            'reason':   'Previously reported by a user',
+            'reason': 'Previously reported by a user',
             'phishing_by_ai': False
         })
 
-    # 2) Rule-based detection (now returns a tuple)
-    phishing_by_rules, rule_reason = is_phishing(url)
+    # 2) Rule-based detection
+    phishing_by_rules, rule_reason = is_phishing_rules(url)
 
     # 3) OpenPhish lookup
     openphish_result = check_openphish(url)
 
-    # 4) AI model (stubbed/uncomment if you wire up features)
+    # 4) AI model - fetch content once and reuse
     phishing_by_ai = False
-    if model:
-        try:
-            features = np.array([[len(url)]])
-            phishing_by_ai = bool(model.predict(features)[0])
-        except Exception as e:
-            print(f"⚠️ AI model error: {e}")
-            phishing_by_ai = False
+    ai_reason = ""
+    
+    # Use provided page_text or fetch it
+    content = page_text or get_page_content(url)
+    if content:
+        phishing_by_ai, ai_reason = check_ai_model(content)
 
     # Combine all detectors
     phishing_detected = (
@@ -186,15 +215,15 @@ def detect_phishing():
         or phishing_by_ai
     )
 
-    # Choose a top-level reason
+    # Choose a top-level reason (prioritize more specific reasons)
     if phishing_by_rules:
         reason = rule_reason
     elif openphish_result:
         reason = "Listed in OpenPhish feed"
     elif phishing_by_ai:
-        reason = "Flagged by AI model"
+        reason = ai_reason
     else:
-        reason = ""
+        reason = "No threats detected"
 
     # Return overall flag, the reason, and the AI flag
     return jsonify({
